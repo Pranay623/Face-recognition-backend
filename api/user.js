@@ -9,17 +9,27 @@ import path from 'path';
 import { authenticateUser } from '../middleware/authentication.js';
 import axios from 'axios';
 import nodemailer from 'nodemailer';
+import { v2 as cloudinary } from 'cloudinary'; // Import Cloudinary
+import 'dotenv/config';
+
+import { CloudinaryStorage } from 'multer-storage-cloudinary'; // Cloudinary storage engine
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME, // Your cloud name
+    api_key: process.env.CLOUDINARY_API_KEY, // Your API key
+    api_secret: process.env.CLOUDINARY_API_SECRET // Your API secret
+  });
 
 
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Path to save uploaded files
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname); // Name the file with timestamp
-  }
-});
+  const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+      folder: 'uploads', // Optional: folder name in Cloudinary
+      allowedFormats: ['jpg', 'png', 'jpeg'],
+      public_id: (req, file) => file.originalname, // Use the original file name
+    },
+  });
 const upload = multer({ storage: storage }).single('file');
 
 const attendanceStorage = multer.diskStorage({
@@ -96,7 +106,7 @@ router.post('/signup', upload, async (req, res) => {
             name,
             email,
             password: hashedPassword,
-            image: req.file.filename // Save the uploaded image filename
+            image: req.file.path // Save the uploaded image filename
         });
 
         const result = await newUser.save();
