@@ -32,15 +32,8 @@ cloudinary.config({
   });
 const upload = multer({ storage: storage }).single('file');
 
-const attendanceStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, 'attendance_uploads/'); // Directory for attendance files
-    },
-    filename: (req, file, cb) => {
-      cb(null, Date.now() + '-' + file.originalname); // Name with timestamp
-    }
-  });
-  const uploadAttendance = multer({ storage: attendanceStorage }).single('file');
+const attendanceStorage =  multer.memoryStorage();
+const uploadAttendance = multer({ attendanceStorage });
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -212,25 +205,63 @@ router.post('/signin',upload, async (req, res) => {
 // });
   
 
-router.post('/attendance', uploadAttendance, async (req, res) => {
+// router.post('/attendance', uploadAttendance.single('file'), async (req, res) => {
+//     try {
+//         const { userID } = req.body; // Manually pass userID in request body
+//         const user = await User.findById(userID);
+//         const image = req.file;
+
+//         // Call the ML model API
+//         // const mlResponse = await axios.post('https://face-recognition-coahmkg42-abhishek-rajdhar-dubeys-projects.vercel.app', { image });
+        
+//         if (!user || !image) {
+//             return res.status(404).json({ status: "FAIL", message: "User not found" });
+//         }
+//         res.json({ status: "SUCCESS", message: "Attendance marked successfully", userName: user.name });
+//     } 
+    
+//     catch (error) {
+//         console.error("Error marking attendance:", error);
+//         res.status(500).json({ status: "FAIL", message: "Could not mark attendance" });
+//     }
+// });
+
+router.post('/attendance', uploadAttendance.single('file'), async (req, res) => {
     try {
         const { userID } = req.body; // Manually pass userID in request body
         const user = await User.findById(userID);
-        const image = req.file;
 
-        // Call the ML model API
-        // const mlResponse = await axios.post('https://face-recognition-coahmkg42-abhishek-rajdhar-dubeys-projects.vercel.app', { image });
-        
-        if (!user || !image) {
-            return res.status(404).json({ status: "FAIL", message: "User not found" });
+        // Check if user and image file are present
+        if (!user || !req.file) {
+            return res.status(404).json({ status: "FAIL", message: "User not found or image not provided" });
         }
-        res.json({ status: "SUCCESS", message: "Attendance marked successfully", userName: user.name });
+
+        // Upload the image to Cloudinary
+        const result = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+                { resource_type: 'image', public_id: `attendance/${userID}_attendance` },
+                (error, result) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve(result);
+                    }
+                }
+            ).end(req.file.buffer); // Pipe the file buffer directly to the Cloudinary uploader
+        });
+
+        // Successfully uploaded to Cloudinary
+        res.status(200).json({
+            status: 'SUCCESS',
+            userName: user.name, // Retrieved user name from the database
+            imageUrl: result.secure_url, // Cloudinary URL of the uploaded image
+            message: "Attendance marked successfully"
+        });
     } catch (error) {
-        console.error("Error marking attendance:", error);
-        res.status(500).json({ status: "FAIL", message: "Could not mark attendance" });
+        console.error('Error uploading attendance:', error);
+        res.status(500).json({ message: 'Attendance marking failed.' });
     }
 });
-
 
 router.get('/profile/:id', async (req, res) => {
     try {
